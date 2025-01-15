@@ -1,1 +1,1 @@
-# bems-omr
+# Bandwidth-Efficient Multi-Server Oblivious Message Retrieval
