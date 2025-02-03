@@ -3,7 +3,6 @@
 #include <chrono>
 #include <fstream>
 
-// Benchmarking class to store the results
 class Benchmarking {
 private:
     double sendRuntime;
@@ -12,13 +11,14 @@ private:
     double decodeRuntime;
     size_t digestSize;
     size_t publicKeySize;
+    std::vector<mpz_class> output;
 
 public:
     // Constructor to initialize values
     Benchmarking(double send = 0.0, double precomputation = 0.0, double retrieval = 0.0, double decode = 0.0,
-                 size_t digest = 0, size_t publicKey = 0)
+                 size_t digest = 0, size_t publicKey = 0, std::vector<mpz_class> out = {})
         : sendRuntime(send), precomputeRuntime(precomputation), retrievalRuntime(retrieval), decodeRuntime(decode),
-          digestSize(digest), publicKeySize(publicKey) {}
+          digestSize(digest), publicKeySize(publicKey), output(out) {}
 
     // Getter methods
     double getSendRuntime() const { return sendRuntime; }
@@ -27,6 +27,7 @@ public:
     double getDecodeRuntime() const { return decodeRuntime; }
     size_t getDigestSize() const { return digestSize; }
     size_t getPublicKeySize() const { return publicKeySize; }
+    std::vector<mpz_class> getOutput() const { return output; }
 
     // Display the benchmarking results
     void display() const {

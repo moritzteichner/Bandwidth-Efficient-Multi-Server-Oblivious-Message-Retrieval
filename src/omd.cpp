@@ -1,4 +1,4 @@
-#include <chrono>
+/*#include <chrono>
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -23,8 +23,8 @@ using namespace ophelib;
 #include "benchmkaring_class.cpp"
 
 #include <NTL/vec_ZZ.h>
-using namespace NTL;
-
+using namespace NTL;*/
+namespace OMD {
 // ------------------------------------------------------------------------Protocol Parameters --------------------------------------------------------------
 int NUM_Messages;
 int N_PER_DFT = NUM_Messages;
@@ -32,9 +32,6 @@ int LOG_NUM_USERS;
 int paillier_bits_prime;
 int k;
 int p = 1;
-double eps = pow(2.0, -40);
-
-int RETRIEVING_USER = 7;
 
 //Determine Modulus q and primitive n-th root of unity z
 mpz_class q, z;
@@ -46,6 +43,8 @@ std::vector<mpz_class> q_factorisation;
 std::vector<MessageWithClue> server0;
 std::vector<MessageWithClue> server1;
 // ------------------------------------------------------------------------Server Implementation ------------------------------------------------------------
+
+
 void receiveMessage(int server, MessageWithClue msg){
     if (server == 0) {
         server0.push_back(msg);
@@ -56,7 +55,7 @@ void receiveMessage(int server, MessageWithClue msg){
 }
 
 // ------------------------------------------------------------------------Client (Sender) Send Implementation --------------------------------------------------------
-void sendMessage(size_t recipient, int message){
+void sendMessage(size_t recipient, mpz_class message){
     // Generater DPF that evaluates to 1 on the input of the recipient.
     auto keys = DPF::Gen(recipient, LOG_NUM_USERS);
 
@@ -69,18 +68,15 @@ void sendMessage(size_t recipient, int message){
     return;
 }
 
-Vec<Ciphertext> DFT(Vec<PackedCiphertext> ciphertexts, PaillierFast pk) {
-    //TODO: k needs to be changed. It can at maximum be the number for ciphertexts per slot. But in practice, much smaller with a still small error probability.
+Vec<Ciphertext> DFT(Vec<PackedCiphertext> ciphertexts, PaillierFast pk, double eps) {
     int coeff_size;
 
     int k2 = findSmallestK(k, p, eps);
-    cout << "New K: " << k2 << endl;
     coeff_size = 2*k2;
 
     if (N_PER_DFT < coeff_size) {
         coeff_size = N_PER_DFT / 2;
     }
-    cout << "Coeff Size: " << coeff_size << endl;
     Vec<Ciphertext> coefficients;
     coefficients.SetLength(coeff_size);
 
@@ -101,22 +97,21 @@ Vec<Ciphertext> DFT(Vec<PackedCiphertext> ciphertexts, PaillierFast pk) {
     return coefficients;
 }
 
-Vec<Ciphertext>  retrieveMessages(PaillierFast pk, int receiver) {
+Vec<Ciphertext> retrieveMessages(PaillierFast pk, int receiver, double eps) {
     std::vector<int> messages;
     // Part 1: Both servers evaluate shares of DPF.
-
     std::vector<bool> share0;
     for (int i = 0; i < server0.size(); i++) {
         bool share = DPF::Eval(server0[i].getClue(), receiver, LOG_NUM_USERS);
         share0.push_back(share);
         // Not needed for OMD: messages.push_back(server0[i].getMessage());
     }
-
     std::vector<bool> share1;
     for (int i = 0; i < server1.size(); i++) {
         bool share = DPF::Eval(server1[i].getClue(), receiver, LOG_NUM_USERS);
         share1.push_back(share);
     }
+
     // Part 1.5: Server 0 encrypts its indices and sends them to Server 1.
     std::vector<Ciphertext> share0_enc;
     for (int i = 0; i < share0.size(); i++) {
@@ -124,8 +119,9 @@ Vec<Ciphertext>  retrieveMessages(PaillierFast pk, int receiver) {
         share0_enc.push_back(pk.encrypt(ptxt));
 
     }
-    // Part 2: Server 1 takes encrypted indices from Server 0 and combines with xor obliviously to create the Perticnency Vector PV.
 
+
+    // Part 2: Server 1 takes encrypted indices from Server 0 and combines with xor obliviously to create the Perticnency Vector PV.
     Vec<Ciphertext> PV;
     PV.SetLength(share0.size());
     for (int i = 0; i < share0.size(); i++) {
@@ -139,8 +135,6 @@ Vec<Ciphertext>  retrieveMessages(PaillierFast pk, int receiver) {
 
     // Part 3: Pack the ciphertexts to perform multiple DFTs at the same time.
 
-    //vector<Ciphertext> packed_PV = pack_ciphertexts(PV, pk, share0.size(), 2*paillier_bits_prime -1, p);
-
     int x = static_cast<int>(std::ceil(static_cast<double>(2*paillier_bits_prime - 2) / p)) - 1;
     Vec<PackedCiphertext> packed_PV = ophelib::Vector::pack_ciphertexts_vec(PV, x, pk);
 
@@ -152,7 +146,7 @@ Vec<Ciphertext>  retrieveMessages(PaillierFast pk, int receiver) {
 
     // Part 4: Compress the sparse data vector using a Discrete Fourier Transform evaluated under HE.
 
-    Vec<Ciphertext> digest = DFT(packed_PV, pk);
+    Vec<Ciphertext> digest = DFT(packed_PV, pk, eps);
 
     // Return the DFT coefficients as a digest.
     return digest;
@@ -205,7 +199,7 @@ std::vector<mpz_class> inverseBlahoot(const std::vector<mpz_class>& vec, const s
     return extendedVec;
 }
 
-void decodeDigest(
+std::vector<mpz_class> decodeDigest(
     PaillierFast sk,
     Vec<Ciphertext> digest,
     const mpz_class& z) {
@@ -217,7 +211,8 @@ void decodeDigest(
     }
 
     std::vector<std::vector<mpz_class>> d = unpack(decrypted, 2*paillier_bits_prime -2, p);
-    
+    std::vector<mpz_class> pertinent_indices;
+
     for (int i = 0; i < d.size(); i++) {
         for (int j = 0; j < d[i].size(); j++) {
             d[i][j] = d[i][j] % q;
@@ -238,19 +233,24 @@ void decodeDigest(
             vector<mpz_class> freq = inverseBlahoot(firstElements, x, actual_k);
             vector<mpz_class> PV_dec = inverseDFT(freq, z);
             for (int j = 0; j < PV_dec.size(); j++) {
-                /*if ((PV_dec[j] % q) > 0) {
-                    std::cout << "Pertinent Index: " << i + j*p << std::endl;
-                }*/
+                if ((PV_dec[j] % q) > 0) {
+                    pertinent_indices.push_back(i + j*p);
+                    //std::cout << "Pertinent Index: " << i + j*p << std::endl;
+                }
             }
         }
     }
+    return pertinent_indices;
 }
 
 Benchmarking omd_run(
     int input_NUM_Messages,
     size_t input_LOG_NUM_USERS,
     int input_paillier_bits_prime,
-    int input_k
+    int input_k,
+    std::vector<int> recievers,
+    int RETRIEVING_USER,
+    double eps
 ) {
     NUM_Messages = input_NUM_Messages;
     LOG_NUM_USERS = input_LOG_NUM_USERS;
@@ -261,27 +261,17 @@ Benchmarking omd_run(
     server0.clear();
     server1.clear();
 
-    //Generate random receivers, including k messages for the retrieving user of this simulation.
-    std::vector<int> recievers = generateClients(k, NUM_Messages, LOG_NUM_USERS, RETRIEVING_USER);
-    std::vector<int> pertinent_indices;
-
-    //Remember the real pertinent indices to check the output of Decode.
-    for (int i = 0; i < recievers.size(); i++) {
-        if (recievers[i] == RETRIEVING_USER) {
-            pertinent_indices.push_back(i);
-        }
-    }
-
     // 1. Start sending all messages. 
     auto start_send = std::chrono::high_resolution_clock::now();
     sendMessage(recievers[0], 131346);
-    auto end_send = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration_send = end_send - start_send;
     
     for (int i = 1; i < recievers.size(); i++) {
         //The actual message can be a dummy here as we are only woring on OMD.
         sendMessage(recievers[i], 131346);
     }
+    auto end_send = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration_send = end_send - start_send;
+    cout << "Sending of Messages done. It took " << duration_send.count() << " seconds." << endl;
 
     // 2. Precomputations Server
     auto start_pre = std::chrono::high_resolution_clock::now();
@@ -314,8 +304,10 @@ Benchmarking omd_run(
         sendMessage(0, 13136);
     }
 
-    auto end_pre = std::chrono::high_resolution_clock::now();  // Record the end time
+    auto end_pre = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration_pre = end_pre - start_pre;
+    cout << "Server Precomputations done. It took " << duration_pre.count() << " seconds." << endl;
+
 
     //Create public key for retrieval. Note that in a real application, this would be a lookup.
     PaillierFast crypto(paillier_bits_prime * 2);
@@ -323,31 +315,33 @@ Benchmarking omd_run(
 
     // 3. Retrieval
     auto start_retrieval = std::chrono::high_resolution_clock::now();
+    Vec<Ciphertext> digest = retrieveMessages(crypto, RETRIEVING_USER, eps);
 
-    Vec<Ciphertext> digest = retrieveMessages(crypto, RETRIEVING_USER);
-
-    auto end_retrieval = std::chrono::high_resolution_clock::now();  // Record the end time
+    auto end_retrieval = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration_retrieval = end_retrieval - start_retrieval;
+    cout << "Server Retrieval done. It took " << duration_retrieval.count() << " seconds." << endl;
+
+
     // 4. Decode the Digest
     auto start_decode = std::chrono::high_resolution_clock::now();
 
-    decodeDigest(crypto, digest, z);
+    std::vector<mpz_class> pertinent_indices = decodeDigest(crypto, digest, z);
 
-    auto end_decode = std::chrono::high_resolution_clock::now();  // Record the end time
+    auto end_decode = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration_decode = end_decode - start_decode;
+    cout << "Client Decoding done. It took " << duration_send.count() << " seconds." << endl;
 
-    // Create Benchmarking object that captures all metrics and return it to the benchmarking environment.
 
-    int digest_size = digest.length();
+    // Create Benchmarking object that captures all metrics and the pertinent indices and return it to the benchmarking environment.
+    int digest_size = (digest.length() * digest[0].data.size_bits()) / 8;
+    cout << "Digest Size: " << digest_size << " bytes." << endl;
 
-    //int public_key_size = .size();
-    int g = crypto.get_pub().g.size_bits();
-    int n = crypto.get_pub().n.size_bits();
-
-    int key_size = (n + g);
+    int g_size = crypto.get_pub().g.size_bits() / 8;
+    int n_size = crypto.get_pub().n.size_bits() / 8;
+    int key_size = (n_size + g_size);
+    cout << "PK Size: " << key_size << " bytes." << endl;
     
-    Benchmarking benchmark(duration_send.count(), duration_pre.count(), duration_retrieval.count(), duration_decode.count(), digest.length(), key_size);
+    Benchmarking benchmark(duration_send.count(), duration_pre.count(), duration_retrieval.count(), duration_decode.count(), digest_size, key_size, pertinent_indices);
     return benchmark;
-
-    return 0;
+}
 }

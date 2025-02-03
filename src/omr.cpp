@@ -1,4 +1,4 @@
-#include <chrono>
+/*#include <chrono>
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -23,17 +23,14 @@ using namespace ophelib;
 #include "benchmkaring_class.cpp"
 
 #include <NTL/vec_ZZ.h>
-using namespace NTL;
-
+using namespace NTL;*/
+namespace OMR{
 // ------------------------------------------------------------------------Protocol Parameters --------------------------------------------------------------
 int NUM_Messages;
 int LOG_NUM_USERS;
 int paillier_bits_prime;
 int k;
 int p = 1;
-double eps = pow(2.0, -40);
-
-int RETRIEVING_USER = 7;
 
 //Determine Modulus q and primitive n-th root of unity z
 mpz_class q, z;
@@ -44,6 +41,8 @@ std::vector<mpz_class> q_factorisation;
 
 std::vector<MessageWithClue> server0;
 std::vector<MessageWithClue> server1;
+
+
 // ------------------------------------------------------------------------Server Implementation ------------------------------------------------------------
 void receiveMessage(int server, MessageWithClue msg){
     if (server == 0) {
@@ -55,7 +54,7 @@ void receiveMessage(int server, MessageWithClue msg){
 }
 
 // ------------------------------------------------------------------------Client (Sender) Send Implementation --------------------------------------------------------
-void sendMessage(size_t recipient, int message){
+void sendMessage(size_t recipient, mpz_class message){
     // Generater DPF that evaluates to 1 on the input of the recipient.
     auto keys = DPF::Gen(recipient, LOG_NUM_USERS);
 
@@ -94,7 +93,7 @@ Vec<Ciphertext> DFT(Vec<Ciphertext> ciphertexts, PaillierFast pk) {
 }
 
 Vec<Ciphertext>  retrieveMessages(PaillierFast pk, int receiver) {
-    std::vector<int> messages;
+    std::vector<mpz_class> messages;
     // Part 1: Both servers evaluate shares of DPF.
 
     std::vector<bool> share0;
@@ -130,7 +129,6 @@ Vec<Ciphertext>  retrieveMessages(PaillierFast pk, int receiver) {
     }
 
     // Part 3: Multiply the PV with the data vector.
-
     for (int i = 0; i < PV.length(); i++) {
         PV[i] = PV[i] * messages[i];
     }
@@ -220,8 +218,9 @@ Benchmarking omr_run(
     int input_NUM_Messages,
     size_t input_LOG_NUM_USERS,
     int input_paillier_bits_prime,
-    int input_k
-) {
+    int input_k,
+    std::vector<int> recievers,
+    int RETRIEVING_USER) {
     NUM_Messages = input_NUM_Messages;
     LOG_NUM_USERS = input_LOG_NUM_USERS;
     paillier_bits_prime = input_paillier_bits_prime;
@@ -231,46 +230,40 @@ Benchmarking omr_run(
     server0.clear();
     server1.clear();
 
-    //Generate random receivers, including k messages for the retrieving user of this simulation.
-    std::vector<int> recievers = generateClients(k, NUM_Messages, LOG_NUM_USERS, RETRIEVING_USER);
-    std::vector<int> pertinent_indices;
-
-    //Remember the real pertinent indices to check the output of Decode.
-    for (int i = 0; i < recievers.size(); i++) {
-        if (recievers[i] == RETRIEVING_USER) {
-            pertinent_indices.push_back(i);
-        }
-    }
-
     auto start_send = std::chrono::high_resolution_clock::now();
     // 1. Start sending all messages. 
     
     for (int receiver : recievers) {
-        //The actual message can be a dummy here as we are only woring on OMD.
-        sendMessage(receiver, 17255);
+        //Attention: Dummy message.
+        gmp_randclass randGen(gmp_randinit_mt); // Use Mersenne Twister RNG
+        randGen.seed(time(nullptr)); // Seed with current time
+        mpz_class randomNumber = randGen.get_z_bits(2040);
+
+        sendMessage(receiver, randomNumber);
     }
 
     auto end_send = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration_send = end_send - start_send;
+    cout << "Sending of Messages done. It took " << duration_send.count() << " seconds." << endl;
 
-    // 2. Precomputations Server
-    auto start_pre = std::chrono::high_resolution_clock::now();
-
-    int log_q = 2*paillier_bits_prime - 3 - static_cast<int>(std::ceil(std::log2(k)));
-
-    auto [q_, q_factorisation_] = findPrimeAndFactors(NUM_Messages, 4000);
-    q = q_;
-    q_factorisation = q_factorisation_;
-    z = findPrimitiveRootOfUnity(NUM_Messages, q, q_factorisation);
-
-    cout << "Found Prime." << endl;
-
-    auto end_pre = std::chrono::high_resolution_clock::now();  // Record the end time
-    std::chrono::duration<double> duration_pre = end_pre - start_pre;
 
     //Create public key for retrieval. Note that in a real application, this would be a lookup.
     PaillierFast crypto(paillier_bits_prime * 2);
     crypto.generate_keys();
+
+    // 2. Precomputations Server
+    auto start_pre = std::chrono::high_resolution_clock::now();
+
+    int log_q = (crypto.get_pub().key_size_bits - 1 - static_cast<int>(std::ceil(std::log2(k)))) / 2;
+    auto [q_, q_factorisation_] = findPrimeAndFactors(NUM_Messages, log_q);
+    q = q_;
+    q_factorisation = q_factorisation_;
+    z = findPrimitiveRootOfUnity(NUM_Messages, q, q_factorisation);
+
+    auto end_pre = std::chrono::high_resolution_clock::now();  // Record the end time
+    std::chrono::duration<double> duration_pre = end_pre - start_pre;
+    cout << "Server Precomputations done. It took " << duration_pre.count() << " seconds." << endl;
+
 
     // 3. Retrieval
     auto start_retrieval = std::chrono::high_resolution_clock::now();
@@ -279,6 +272,8 @@ Benchmarking omr_run(
 
     auto end_retrieval = std::chrono::high_resolution_clock::now();  // Record the end time
     std::chrono::duration<double> duration_retrieval = end_retrieval - start_retrieval;
+    cout << "Server Retrieval done. It took " << duration_retrieval.count() << " seconds." << endl;
+
 
     // 4. Decode the Digest
     auto start_decode = std::chrono::high_resolution_clock::now();
@@ -287,11 +282,20 @@ Benchmarking omr_run(
 
     auto end_decode = std::chrono::high_resolution_clock::now();  // Record the end time
     std::chrono::duration<double> duration_decode = end_decode - start_decode;
+    cout << "Client Decoding done. It took " << duration_send.count() << " seconds." << endl;
 
     // Create Benchmarking object that captures all metrics and return it to the benchmarking environment.
+    int digest_size = (digest.length() * digest[0].data.size_bits()) / 8;
+    cout << digest.length() << endl;
+    cout << digest[0].data.size_bits() << endl;
+    cout << "Digest Size: " << digest_size << " bytes." << endl;
+
+    int g_size = crypto.get_pub().g.size_bits() / 8;
+    int n_size = crypto.get_pub().n.size_bits() / 8;
+    int key_size = (n_size + g_size);
+    cout << "PK Size: " << key_size << " bytes." << endl;
 
     Benchmarking benchmark(duration_send.count(), duration_pre.count(), duration_retrieval.count(), duration_decode.count(), 0, 0);
     return benchmark;
-
-    return 0;
+}
 }

@@ -64,7 +64,7 @@ std::pair<mpz_class, std::vector<mpz_class>> findPrimeAndFactors(mpz_class m, in
     int currentBits = mpz_sizeinbase(m.get_mpz_t(), 2);
 
     // Define sets of exact bit primes to use
-    std::vector<int> bitSizes = {2001, 2000, 2}; // Add more ranges for flexibility
+    std::vector<int> bitSizes = {targetBitSize / 2 + 1, targetBitSize / 2, 2}; // Add more ranges for flexibility
     std::vector<std::vector<mpz_class>> primePools;
 
     // Generate primes for all specified bit sizes
