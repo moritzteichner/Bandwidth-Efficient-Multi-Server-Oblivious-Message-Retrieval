@@ -12,25 +12,13 @@ RUN apt-get update && apt-get install -y \
     libgmp-dev \
     libssl-dev \
     libgsl-dev \
-    wget \
-    gpg \
-    gnupg2 \
-    lsb-release \
-    ca-certificates \
-    build-essential \
-    curl \
     m4 \
     libtool-bin \
     libntl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install nasm
 RUN apt-get update && \
-    apt-get install -y nasm && \
     apt-get clean
-
-# Update package list again to include Intel repository
-RUN apt update
 
 # Set up work directory
 WORKDIR /usr/src/
@@ -42,17 +30,20 @@ RUN git clone https://github.com/dkales/dpf-cpp.git && \
     cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make
 
-WORKDIR /usr/src/
-
 # Set work directory for your project
 WORKDIR /usr/src/app
 COPY . /usr/src/app
 
+RUN git clone https://github.com/abb-iss/ophelib.git && \
+    rm -rf ophelib/cmake
+
+COPY cmake ophelib/cmake
+
 RUN cd ophelib && \
-mkdir build && cd build && \
-cmake .. && \
-make -j && \
-make install
+    mkdir build && cd build && \
+    cmake .. && \
+    make -j && \
+    make install
 
 # Command to build your project
 CMD ["cmake", "-B", "build", "-S", ".", "&&", "cmake", "--build", "build"]
