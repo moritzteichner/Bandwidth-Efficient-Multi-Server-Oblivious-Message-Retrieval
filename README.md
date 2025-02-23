@@ -6,8 +6,8 @@ This repository includes an implementation of a multi-server Oblivious Message R
 
 1. **OS**: We use Ubuntu 22.04 as our operating system.
 2. **Install Dependencies**: Installs essential build tools and libraries: `build-essential`, `cmake`, `git`, `libgmp-dev`, `libssl-dev`, `libgsl-dev`. `m4`, `libtool-bin`, `libntl-dev`.
-3. **DPF Library by Daniel Kales `dpf-cpp`** https://github.com/dkales/dpf-cpp
-4. **Paillier Library by ABB `ophelib`** https://github.com/abb-iss/ophelib
+3. **Install DPF Library by Daniel Kales `dpf-cpp`** https://github.com/dkales/dpf-cpp
+4. **Install Paillier Library by ABB `ophelib`** https://github.com/abb-iss/ophelib
 
 ## Docker
 
