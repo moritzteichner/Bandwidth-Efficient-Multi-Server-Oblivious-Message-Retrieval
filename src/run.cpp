@@ -57,8 +57,10 @@ int run(bool retrieval, int N, int M, int K) {
     }
     Benchmarking result;
     if (retrieval) {
+        cout << "OMR" << endl;
         result = OMR::omr_run(N, M, paillierPrimeSize, K, recievers, RETRIEVING_USER);
     } else {
+        cout << "OMD" << endl;
         result = OMD::omd_run(N, M, paillierPrimeSize, K, recievers, RETRIEVING_USER, eps);
     }
 
