@@ -35,11 +35,7 @@ WORKDIR /usr/src/app
 COPY . /usr/src/app
 
 RUN git clone https://github.com/abb-iss/ophelib.git && \
-    rm -rf ophelib/cmake
-
-COPY cmake ophelib/cmake
-
-RUN cd ophelib && \
+    cd ophelib && \
     mkdir build && cd build && \
     cmake .. && \
     make -j && \

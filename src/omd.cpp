@@ -329,7 +329,7 @@ Benchmarking omd_run(
 
     auto end_decode = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration_decode = end_decode - start_decode;
-    cout << "Client Decoding done. It took " << duration_send.count() << " seconds." << endl;
+    cout << "Client Decoding done. It took " << duration_decode.count() << " seconds." << endl;
 
 
     // Create Benchmarking object that captures all metrics and the pertinent indices and return it to the benchmarking environment.

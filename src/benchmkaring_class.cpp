@@ -32,8 +32,8 @@ public:
     // Display the benchmarking results
     void display() const {
         std::cout << "Sender Runtime: " << sendRuntime << " seconds\n";
-        std::cout << "Server Runtime: " << precomputeRuntime << " seconds\n";
-        std::cout << "Server Runtime: " << retrievalRuntime << " seconds\n";
+        std::cout << "Server Precomputation Runtime: " << precomputeRuntime << " seconds\n";
+        std::cout << "Server Retrieval Runtime: " << retrievalRuntime << " seconds\n";
         std::cout << "Recipient Runtime: " << decodeRuntime << " seconds\n";
         std::cout << "Digest Size: " << digestSize << " bytes\n";
         std::cout << "Public Key Size: " << publicKeySize << " bytes\n";

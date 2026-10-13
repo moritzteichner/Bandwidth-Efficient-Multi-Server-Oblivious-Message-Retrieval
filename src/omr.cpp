@@ -188,7 +188,7 @@ std::vector<mpz_class> inverseBlahoot(const std::vector<mpz_class>& vec, const s
     return extendedVec;
 }
 
-void decodeDigest(
+std::vector<mpz_class> decodeDigest(
     PaillierFast sk,
     Vec<Ciphertext> digest,
     const mpz_class& z) {
@@ -207,11 +207,15 @@ void decodeDigest(
     vector<mpz_class> firstElements(d.begin(), d.begin() + k);
     vector<mpz_class> freq = inverseBlahoot(firstElements, x, k);
     vector<mpz_class> PV_dec = inverseDFT(freq, z);
-    /*for (int j = 0; j < PV_dec.size(); j++) {
+
+    //Non-zero entries of the decoded vector are the pertinent messages. Return their indices.
+    std::vector<mpz_class> pertinent_indices;
+    for (int j = 0; j < PV_dec.size(); j++) {
         if ((PV_dec[j] % q) > 0) {
-            std::cout << "Pertinent Message at index " << j << ": " << (PV_dec[j] % q) << std::endl;
+            pertinent_indices.push_back(j);
         }
-    }*/
+    }
+    return pertinent_indices;
 }
 
 Benchmarking omr_run(
@@ -233,10 +237,14 @@ Benchmarking omr_run(
     auto start_send = std::chrono::high_resolution_clock::now();
     // 1. Start sending all messages. 
     
+    //Dummy message payloads. Seeded once from the OS entropy source so that every message is distinct.
+    //These are test payloads only; the PRNG is not used for any key material.
+    std::random_device rd;
+    mpz_class seed = (mpz_class(rd()) << 32) | mpz_class(rd());
+    gmp_randclass randGen(gmp_randinit_mt);
+    randGen.seed(seed);
+
     for (int receiver : recievers) {
-        //Attention: Dummy message.
-        gmp_randclass randGen(gmp_randinit_mt); // Use Mersenne Twister RNG
-        randGen.seed(time(nullptr)); // Seed with current time
         mpz_class randomNumber = randGen.get_z_bits(2040);
 
         sendMessage(receiver, randomNumber);
@@ -278,16 +286,14 @@ Benchmarking omr_run(
     // 4. Decode the Digest
     auto start_decode = std::chrono::high_resolution_clock::now();
 
-    decodeDigest(crypto, digest, z);
+    std::vector<mpz_class> pertinent_indices = decodeDigest(crypto, digest, z);
 
     auto end_decode = std::chrono::high_resolution_clock::now();  // Record the end time
     std::chrono::duration<double> duration_decode = end_decode - start_decode;
-    cout << "Client Decoding done. It took " << duration_send.count() << " seconds." << endl;
+    cout << "Client Decoding done. It took " << duration_decode.count() << " seconds." << endl;
 
-    // Create Benchmarking object that captures all metrics and return it to the benchmarking environment.
+    // Create Benchmarking object that captures all metrics and the pertinent indices and return it to the benchmarking environment.
     int digest_size = (digest.length() * digest[0].data.size_bits()) / 8;
-    cout << digest.length() << endl;
-    cout << digest[0].data.size_bits() << endl;
     cout << "Digest Size: " << digest_size << " bytes." << endl;
 
     int g_size = crypto.get_pub().g.size_bits() / 8;
@@ -295,7 +301,7 @@ Benchmarking omr_run(
     int key_size = (n_size + g_size);
     cout << "PK Size: " << key_size << " bytes." << endl;
 
-    Benchmarking benchmark(duration_send.count(), duration_pre.count(), duration_retrieval.count(), duration_decode.count(), 0, 0);
+    Benchmarking benchmark(duration_send.count(), duration_pre.count(), duration_retrieval.count(), duration_decode.count(), digest_size, key_size, pertinent_indices);
     return benchmark;
 }
 }

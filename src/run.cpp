@@ -56,18 +56,28 @@ int run(bool retrieval, int N, int M, int K) {
         }
     }
     Benchmarking result;
-    if (retrieval) {
-        cout << "OMR" << endl;
-        result = OMR::omr_run(N, M, paillierPrimeSize, K, recievers, RETRIEVING_USER);
-    } else {
-        cout << "OMD" << endl;
-        result = OMD::omd_run(N, M, paillierPrimeSize, K, recievers, RETRIEVING_USER, eps);
+    try {
+        if (retrieval) {
+            cout << "OMR" << endl;
+            result = OMR::omr_run(N, M, paillierPrimeSize, K, recievers, RETRIEVING_USER);
+        } else {
+            cout << "OMD" << endl;
+            result = OMD::omd_run(N, M, paillierPrimeSize, K, recievers, RETRIEVING_USER, eps);
+        }
+    } catch (const std::domain_error& e) {
+        // The packing factor estimate is only defined for K*N >= e*ln(2)*(2*paillierPrimeSize - 2).
+        std::cerr << "Parameters out of range: " << e.what() << std::endl;
+        std::cerr << "OMD requires K*N >= " << std::ceil(std::exp(1) * std::log(2) * (2 * paillierPrimeSize - 2))
+                  << " for " << paillierPrimeSize << "-bit Paillier primes." << std::endl;
+        return 1;
     }
 
     if (areVectorsEqual(pertinent_indices, result.getOutput())) {
         std::cout << "Result is correct." << std::endl;
+        return 0;
     }
-    return 0;
+    std::cerr << "Result is incorrect: decoded indices do not match the pertinent messages." << std::endl;
+    return 1;
 }
 
 int run_benchmarks(bool retrieval) {
@@ -91,10 +101,12 @@ int run_benchmarks(bool retrieval) {
 
     // Write CSV header only if the file is newly created
     if (!fileExists) {
-        csvFile << "NUM_Messages,LOG_NUM_USER,PAILLIER_PRIME_SIZE,k,Sender_Runtime,Server_Runtime,"
-                   "Recipient_Runtime,Digest_Size,Public_Key_Size\n";
+        csvFile << "NUM_Messages,LOG_NUM_USER,PAILLIER_PRIME_SIZE,k,Sender_Runtime,Server_Precomputation_Runtime,"
+                   "Server_Retrieval_Runtime,Recipient_Runtime,Digest_Size,Public_Key_Size\n";
         csvFile.flush(); // Ensure the header is written immediately
     }
+
+    int failures = 0;
 
     // Run the benchmark for each combination of parameters
     for (int numMsg : numMessages) {
@@ -113,10 +125,18 @@ int run_benchmarks(bool retrieval) {
                         }
                     }
 
-                    Benchmarking result = OMD::omd_run(numMsg, logUser, paillierSize, k, recievers, RETRIEVING_USER, eps);
+                    Benchmarking result;
+                    if (retrieval) {
+                        result = OMR::omr_run(numMsg, logUser, paillierSize, k, recievers, RETRIEVING_USER);
+                    } else {
+                        result = OMD::omd_run(numMsg, logUser, paillierSize, k, recievers, RETRIEVING_USER, eps);
+                    }
 
                     if (areVectorsEqual(pertinent_indices, result.getOutput())) {
                         std::cout << "Result is correct." << std::endl;
+                    } else {
+                        std::cerr << "Result is incorrect for N=" << numMsg << ", M=" << logUser << ", K=" << k << "." << std::endl;
+                        failures++;
                     }
 
                     result.saveToCSV(csvFile, numMsg, logUser, paillierSize, k);
@@ -128,5 +148,5 @@ int run_benchmarks(bool retrieval) {
 
     // Close the CSV file
     csvFile.close();
-    return 0;
+    return failures == 0 ? 0 : 1;
 }
